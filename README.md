@@ -19,6 +19,7 @@ Convert a v2rayN/V2Ray raw subscription into Clash/Mihomo YAML on your local mac
 - 支持仅生成 Clash/Mihomo YAML
 - 支持把生成的 YAML 上传到路由器 ShellCrash
 - 支持在 Web 页面选择已有 YAML 并上传
+- 支持在 Web 页面查看阶段进度和实时日志
 - 上传前自动备份路由器旧配置
 - 上传后用 ShellCrash 当前 Mihomo 核心测试配置，通过后再重启
 

@@ -106,6 +106,7 @@
     }
     .status.ok { color: var(--ok); }
     .status.err { color: var(--danger); }
+    .status.run { color: var(--accent); }
     .hint {
       color: var(--muted);
       margin: 4px 0 0;
@@ -129,6 +130,65 @@
     }
     .file-meta.selected {
       color: var(--text);
+    }
+    .progress-panel {
+      display: none;
+    }
+    .progress-panel.visible {
+      display: block;
+    }
+    .progress-title {
+      margin: 0 0 12px;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .stage-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 8px;
+    }
+    .stage-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 10px;
+      background: #fbfcfe;
+    }
+    .stage-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: #cbd5e1;
+      flex: 0 0 10px;
+    }
+    .stage-item.active {
+      border-color: #93c5fd;
+      color: var(--text);
+      background: #eff6ff;
+    }
+    .stage-item.active .stage-dot {
+      background: var(--accent);
+    }
+    .stage-item.done {
+      color: var(--text);
+      background: #f0fdf4;
+      border-color: #86efac;
+    }
+    .stage-item.done .stage-dot {
+      background: var(--ok);
+    }
+    .stage-item.error {
+      color: var(--danger);
+      background: #fef2f2;
+      border-color: #fca5a5;
+    }
+    .stage-item.error .stage-dot {
+      background: var(--danger);
     }
     @media (max-width: 720px) {
       .grid { grid-template-columns: 1fr; }
@@ -183,12 +243,24 @@
     </section>
 
     <section class="panel">
+      <div id="progressPanel" class="progress-panel">
+        <p id="progressTitle" class="progress-title">等待开始</p>
+        <ol id="stageList" class="stage-list"></ol>
+      </div>
+    </section>
+
+    <section class="panel">
       <label for="output">执行日志</label>
       <textarea id="output" readonly></textarea>
     </section>
   </main>
 
   <script>
+    const TASK_TITLES = {
+      convert: "仅生成 YAML",
+      upload: "生成并上传",
+      "upload-yaml": "上传 YAML"
+    };
     const fields = {
       subscriptionUrl: document.querySelector("#subscriptionUrl"),
       routerHost: document.querySelector("#routerHost"),
@@ -201,7 +273,11 @@
     const outputEl = document.querySelector("#output");
     const yamlFileMetaEl = document.querySelector("#yamlFileMeta");
     const clearYamlBtn = document.querySelector("#clearYamlBtn");
+    const progressPanelEl = document.querySelector("#progressPanel");
+    const progressTitleEl = document.querySelector("#progressTitle");
+    const stageListEl = document.querySelector("#stageList");
     const buttons = [...document.querySelectorAll("button")];
+    let activePoll = null;
 
     function payload() {
       return {
@@ -250,6 +326,59 @@
       statusEl.className = `status ${kind}`;
     }
 
+    function resetProgress() {
+      progressPanelEl.classList.remove("visible");
+      progressTitleEl.textContent = "等待开始";
+      stageListEl.innerHTML = "";
+    }
+
+    function renderTask(task) {
+      const title = TASK_TITLES[task.type] || "任务";
+      progressPanelEl.classList.add("visible");
+      progressTitleEl.textContent = `${title}：${task.stageLabel || "处理中"}`;
+      stageListEl.innerHTML = "";
+
+      const currentIndex = task.stages.indexOf(task.stage);
+      task.stages.forEach((stage, index) => {
+        const item = document.createElement("li");
+        const dot = document.createElement("span");
+        const text = document.createElement("span");
+        item.className = "stage-item";
+        dot.className = "stage-dot";
+        text.textContent = stage === task.stage ? `${task.stageLabel}` : stageLabel(stage);
+        item.appendChild(dot);
+        item.appendChild(text);
+
+        if (task.status === "error" && stage === task.stage) item.classList.add("error");
+        else if (task.status === "success" || (currentIndex > index && currentIndex >= 0)) item.classList.add("done");
+        else if (stage === task.stage) item.classList.add("active");
+
+        stageListEl.appendChild(item);
+      });
+      outputEl.value = (task.logs || []).join("\n");
+      outputEl.scrollTop = outputEl.scrollHeight;
+
+      if (task.status === "success") setStatus("已完成", "ok");
+      else if (task.status === "error") setStatus("执行失败", "err");
+      else setStatus(task.stageLabel || "执行中", "run");
+    }
+
+    function stageLabel(stage) {
+      const labels = {
+        preparing: "准备配置",
+        "reading-yaml": "定位 YAML 文件",
+        "starting-subconverter": "启动 subconverter",
+        converting: "转换订阅",
+        "writing-yaml": "写入 YAML",
+        "uploading-router": "上传到路由器",
+        "installing-shellcrash": "安装到 ShellCrash",
+        "validating-config": "校验配置",
+        "restarting-shellcrash": "重启 ShellCrash",
+        finished: "完成"
+      };
+      return labels[stage] || stage;
+    }
+
     function setBusy(busy) {
       buttons.forEach(btn => btn.disabled = busy);
     }
@@ -267,6 +396,47 @@
       return data;
     }
 
+    function stopPolling() {
+      if (activePoll) {
+        clearTimeout(activePoll);
+        activePoll = null;
+      }
+    }
+
+    async function pollTask(taskId) {
+      try {
+        const data = await request(`/api/tasks/${encodeURIComponent(taskId)}`);
+        renderTask(data.task);
+        if (data.task.status === "success" || data.task.status === "error") {
+          setBusy(false);
+          stopPolling();
+          return;
+        }
+        activePoll = setTimeout(() => pollTask(taskId), 500);
+      } catch (error) {
+        outputEl.value = error.message;
+        setStatus("查询任务失败", "err");
+        setBusy(false);
+        stopPolling();
+      }
+    }
+
+    async function startTask(path, body, fallbackStatus) {
+      stopPolling();
+      resetProgress();
+      outputEl.value = "";
+      setBusy(true);
+      setStatus(fallbackStatus, "run");
+      try {
+        const data = await request(path, body);
+        await pollTask(data.taskId);
+      } catch (error) {
+        outputEl.value = error.message;
+        setStatus("启动失败", "err");
+        setBusy(false);
+      }
+    }
+
     async function loadConfig() {
       const data = await request("/api/config");
       fields.subscriptionUrl.value = data.subscriptionUrl || "";
@@ -277,36 +447,18 @@
     }
 
     async function run(path, message) {
-      setBusy(true);
-      setStatus(message);
-      outputEl.value = "";
-      try {
-        const data = await request(path, payload());
-        outputEl.value = data.output || "完成";
-        setStatus("完成", "ok");
-      } catch (error) {
-        outputEl.value = error.message;
-        setStatus("失败", "err");
-      } finally {
-        setBusy(false);
-      }
+      await startTask(path, payload(), message);
     }
 
     async function uploadYaml() {
-      setBusy(true);
-      setStatus("上传 YAML 中");
-      outputEl.value = "";
       try {
-        const data = await request("/api/upload-yaml", {
+        await startTask("/api/tasks/upload-yaml", {
           ...payload(),
           ...(await readSelectedYaml())
-        });
-        outputEl.value = data.output || "完成";
-        setStatus("完成", "ok");
+        }, "上传 YAML 中");
       } catch (error) {
         outputEl.value = error.message;
-        setStatus("失败", "err");
-      } finally {
+        setStatus("读取文件失败", "err");
         setBusy(false);
       }
     }
@@ -323,13 +475,15 @@
         setBusy(false);
       }
     });
-    document.querySelector("#convertBtn").addEventListener("click", () => run("/api/convert", "转换中"));
-    document.querySelector("#uploadBtn").addEventListener("click", () => run("/api/upload", "转换并上传中"));
+    document.querySelector("#convertBtn").addEventListener("click", () => run("/api/tasks/convert", "转换中"));
+    document.querySelector("#uploadBtn").addEventListener("click", () => run("/api/tasks/upload", "转换并上传中"));
     document.querySelector("#uploadYamlBtn").addEventListener("click", uploadYaml);
     fields.yamlFile.addEventListener("change", updateYamlFileMeta);
     clearYamlBtn.addEventListener("click", clearSelectedYaml);
+    window.addEventListener("beforeunload", stopPolling);
 
     updateYamlFileMeta();
+    resetProgress();
     loadConfig().catch(error => {
       outputEl.value = error.message;
       setStatus("配置加载失败", "err");

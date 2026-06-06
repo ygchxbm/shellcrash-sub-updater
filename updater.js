@@ -33,6 +33,10 @@ function log(message) {
   process.stdout.write(`${message}\n`);
 }
 
+function logStage(stage) {
+  log(`[stage] ${stage}`);
+}
+
 function fail(message) {
   throw new Error(message);
 }
@@ -303,13 +307,22 @@ async function main() {
   const configPath = path.resolve(process.cwd(), args.config);
   const config = readJson(configPath);
   if (!config.subscriptionUrl) fail("config.subscriptionUrl is required.");
+  logStage("preparing");
   if (args.uploadOnly) {
+    logStage("reading-yaml");
     const localYaml = resolveUploadYaml(config, args);
     log(`Using YAML ${localYaml}`);
+    logStage("uploading-router");
     log("Uploading to router...");
     upload(config, localYaml);
+    logStage("installing-shellcrash");
+    logStage("validating-config");
+    if (!args.noRestart && config.restartShellCrash !== false) {
+      logStage("restarting-shellcrash");
+    }
     log("Installing on ShellCrash and testing config...");
     installRemote(config, !args.noRestart && config.restartShellCrash !== false);
+    logStage("finished");
     log("Done.");
     return;
   }
@@ -317,23 +330,33 @@ async function main() {
   const sub = await ensureSubconverter(config);
   const portStart = config.subconverter?.portStart || 25500;
   const portEnd = config.subconverter?.portEnd || portStart;
+  logStage("starting-subconverter");
   log(`Starting local subconverter (${sub.asset.key})...`);
   const svc = await startSubconverter(sub.exe, sub.cwd, portStart, portEnd);
   try {
+    logStage("converting");
     log(`Converting subscription locally on 127.0.0.1:${svc.port}...`);
     const { yaml, count } = await convert(config, svc.port);
     const out = path.resolve(ROOT, config.paths.localYaml || "./out/clash.yaml");
     ensureDir(path.dirname(out));
     fs.writeFileSync(out, yaml);
+    logStage("writing-yaml");
     log(`Wrote ${out}`);
     log(`Proxy nodes: ${count}`);
     if (!args.convertOnly) {
+      logStage("uploading-router");
       log("Uploading to router...");
       upload(config, out);
+      logStage("installing-shellcrash");
+      logStage("validating-config");
+      if (!args.noRestart && config.restartShellCrash !== false) {
+        logStage("restarting-shellcrash");
+      }
       log("Installing on ShellCrash and testing config...");
       installRemote(config, !args.noRestart && config.restartShellCrash !== false);
-      log("Done.");
     }
+    logStage("finished");
+    log("Done.");
   } finally {
     svc.child.kill();
   }
