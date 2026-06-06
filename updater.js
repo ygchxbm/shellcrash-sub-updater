@@ -78,8 +78,8 @@ function platformAsset() {
   if (p === "linux" && a === "arm64") return { key: "linux-arm64", asset: "subconverter_aarch64.tar.gz", exe: "subconverter" };
   if (p === "linux" && a === "arm") return { key: "linux-arm", asset: "subconverter_armv7.tar.gz", exe: "subconverter" };
   if (p === "linux" && a === "x64") return { key: "linux-x64", asset: "subconverter_linux64.tar.gz", exe: "subconverter" };
-  if (p === "win32" && a === "x64") return { key: "win32-x64", asset: "subconverter_win64.7z", exe: "subconverter.exe", needsManualExtract: true };
-  if (p === "win32" && a === "ia32") return { key: "win32-ia32", asset: "subconverter_win32.7z", exe: "subconverter.exe", needsManualExtract: true };
+  if (p === "win32" && a === "x64") return { key: "win32-x64", asset: "subconverter_win64.7z", exe: "subconverter.exe" };
+  if (p === "win32" && a === "ia32") return { key: "win32-ia32", asset: "subconverter_win32.7z", exe: "subconverter.exe" };
   fail(`Unsupported platform: ${p}/${a}`);
 }
 
@@ -120,6 +120,28 @@ function extractTarGz(archive, dest) {
   if (res.status !== 0) fail("Failed to extract tar.gz archive. Make sure tar is available.");
 }
 
+async function extractArchive(archive, dest) {
+  ensureDir(dest);
+
+  if (archive.endsWith(".tar.gz")) {
+    extractTarGz(archive, dest);
+    return;
+  }
+
+  if (archive.endsWith(".7z")) {
+    let sevenZip;
+    try {
+      sevenZip = require("7zip-min");
+    } catch {
+      fail("Missing dependency 7zip-min. Run npm install before using Windows .7z auto extraction.");
+    }
+    await sevenZip.unpack(archive, dest);
+    return;
+  }
+
+  fail(`Unsupported archive format: ${archive}`);
+}
+
 async function ensureSubconverter(config) {
   const version = config.subconverter?.version || "v0.9.0";
   const asset = platformAsset();
@@ -127,21 +149,12 @@ async function ensureSubconverter(config) {
   const exe = path.join(installRoot, "subconverter", asset.exe);
   if (fs.existsSync(exe)) return { exe, cwd: path.dirname(exe), asset };
 
-  if (asset.needsManualExtract) {
-    const url = `https://github.com/tindy2013/subconverter/releases/download/${version}/${asset.asset}`;
-    fail([
-      "Windows requires one-time manual extraction of the official .7z archive.",
-      `Download: ${url}`,
-      `Extract into: ${path.join(installRoot, "subconverter")}`,
-      `Expected executable: ${exe}`
-    ].join("\n"));
-  }
-
   const archive = path.join(ROOT, "tools", "downloads", `${version}-${asset.asset}`);
   const url = `https://github.com/tindy2013/subconverter/releases/download/${version}/${asset.asset}`;
   if (!fs.existsSync(archive)) await downloadFile(url, archive);
-  extractTarGz(archive, installRoot);
-  fs.chmodSync(exe, 0o755);
+  await extractArchive(archive, installRoot);
+  if (!fs.existsSync(exe)) fail(`Expected executable not found after extraction: ${exe}`);
+  if (process.platform !== "win32") fs.chmodSync(exe, 0o755);
   return { exe, cwd: path.dirname(exe), asset };
 }
 

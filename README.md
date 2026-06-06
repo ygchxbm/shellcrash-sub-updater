@@ -29,13 +29,14 @@ Convert a v2rayN/V2Ray raw subscription into Clash/Mihomo YAML on your local mac
 - 本机可通过 SSH 登录路由器
 - 路由器已安装 ShellCrash
 - macOS/Linux 需要系统有 `ssh`、`scp`、`tar`
-- Windows 第一次需要手动解压 subconverter，见下方说明
+- Windows 会自动下载并解压 subconverter，不需要手动安装 7-Zip
 
 ## 快速开始
 
 ```bash
 git clone https://github.com/ygchxbm/shellcrash-sub-updater.git
 cd shellcrash-sub-updater
+npm install
 cp config.example.json config.json
 ```
 
@@ -190,25 +191,27 @@ PORT=3001 npm start
 npm run web:help
 ```
 
-## Windows 说明
+## Windows 自动解压
 
-Windows 第一次运行时，需要手动下载并解压官方 subconverter：
+Windows 首次运行时会自动下载官方 `.7z` 包：
 
 ```text
 https://github.com/tindy2013/subconverter/releases/download/v0.9.0/subconverter_win64.7z
 ```
 
-解压到：
+项目通过 `7zip-min` 解压到：
 
 ```text
 tools/subconverter/v0.9.0/win32-x64/subconverter/
 ```
 
-确保存在：
+源码方式运行时需要先执行一次：
 
-```text
-tools/subconverter/v0.9.0/win32-x64/subconverter/subconverter.exe
+```bash
+npm install
 ```
+
+如果发布免安装压缩包，需要把 `node_modules/7zip-min` 及其依赖的 7-Zip 二进制一起打进发布包，否则 Windows 用户仍然会缺少自动解压依赖。
 
 ## 安全提醒
 
@@ -234,6 +237,7 @@ tools/subconverter/v0.9.0/win32-x64/subconverter/subconverter.exe
 - README 中的仓库地址已经替换成你的真实 GitHub 地址
 - `config.example.json` 里没有你的真实订阅地址或私钥路径
 - 本地运行一次 `npm run check`
+- 免安装发布包已包含 `node_modules/7zip-min` 和 `node_modules/7zip-bin`
 
 建议同时更新：
 

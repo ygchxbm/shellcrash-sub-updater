@@ -27,5 +27,8 @@
     "mihomo",
     "v2ray",
     "router"
-  ]
+  ],
+  "dependencies": {
+    "7zip-min": "^2.0.0"
+  }
 }
