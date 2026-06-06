@@ -111,6 +111,25 @@
       margin: 4px 0 0;
       font-size: 13px;
     }
+    .file-picker {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .file-picker input[type="file"] {
+      flex: 1 1 220px;
+      min-width: 0;
+    }
+    .file-meta {
+      flex: 1 1 100%;
+      color: var(--muted);
+      font-size: 13px;
+      word-break: break-all;
+    }
+    .file-meta.selected {
+      color: var(--text);
+    }
     @media (max-width: 720px) {
       .grid { grid-template-columns: 1fr; }
       .status { width: 100%; margin-left: 0; }
@@ -143,8 +162,11 @@
       </div>
       <div class="row">
         <label for="yamlFile">上传指定 YAML 文件</label>
-        <input id="yamlFile" type="file" accept=".yaml,.yml,application/x-yaml,text/yaml,text/plain">
-        <p class="hint">未选择文件时，会上传 out 目录中按文件名排序的第一个 .yaml/.yml 文件。</p>
+        <div class="file-picker">
+          <input id="yamlFile" type="file" accept=".yaml,.yml,application/x-yaml,text/yaml,text/plain">
+          <button id="clearYamlBtn" type="button" class="secondary" hidden>取消已选文件</button>
+        </div>
+        <p id="yamlFileMeta" class="file-meta">未选择文件时，会上传 out 目录中按文件名排序的第一个 .yaml/.yml 文件。</p>
       </div>
       <label class="check">
         <input id="restartShellCrash" type="checkbox">
@@ -177,6 +199,8 @@
     };
     const statusEl = document.querySelector("#status");
     const outputEl = document.querySelector("#output");
+    const yamlFileMetaEl = document.querySelector("#yamlFileMeta");
+    const clearYamlBtn = document.querySelector("#clearYamlBtn");
     const buttons = [...document.querySelectorAll("button")];
 
     function payload() {
@@ -187,6 +211,24 @@
         localYaml: fields.localYaml.value,
         restartShellCrash: fields.restartShellCrash.checked
       };
+    }
+
+    function updateYamlFileMeta() {
+      const file = fields.yamlFile.files[0];
+      if (file) {
+        yamlFileMetaEl.textContent = `已选择：${file.name}（${(file.size / 1024).toFixed(1)} KB）`;
+        yamlFileMetaEl.classList.add("selected");
+        clearYamlBtn.hidden = false;
+        return;
+      }
+      yamlFileMetaEl.textContent = "未选择文件时，会上传 out 目录中按文件名排序的第一个 .yaml/.yml 文件。";
+      yamlFileMetaEl.classList.remove("selected");
+      clearYamlBtn.hidden = true;
+    }
+
+    function clearSelectedYaml() {
+      fields.yamlFile.value = "";
+      updateYamlFileMeta();
     }
 
     function readSelectedYaml() {
@@ -284,7 +326,10 @@
     document.querySelector("#convertBtn").addEventListener("click", () => run("/api/convert", "转换中"));
     document.querySelector("#uploadBtn").addEventListener("click", () => run("/api/upload", "转换并上传中"));
     document.querySelector("#uploadYamlBtn").addEventListener("click", uploadYaml);
+    fields.yamlFile.addEventListener("change", updateYamlFileMeta);
+    clearYamlBtn.addEventListener("click", clearSelectedYaml);
 
+    updateYamlFileMeta();
     loadConfig().catch(error => {
       outputEl.value = error.message;
       setStatus("配置加载失败", "err");
