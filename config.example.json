@@ -1,0 +1,35 @@
+{
+  "subscriptionUrl": "https://example.com/your-v2ray-subscription",
+  "subconverter": {
+    "version": "v0.9.0",
+    "portStart": 25500,
+    "portEnd": 25520,
+    "config": "config/ACL4SSR_Online_Mini.ini"
+  },
+  "conversion": {
+    "target": "clash",
+    "insert": false,
+    "emoji": false,
+    "newName": true,
+    "udp": true
+  },
+  "router": {
+    "host": "192.168.31.1",
+    "user": "root",
+    "privateKey": "./id_rsa",
+    "sshOptions": [
+      "-o", "HostKeyAlgorithms=+ssh-rsa",
+      "-o", "PubkeyAcceptedAlgorithms=+ssh-rsa",
+      "-o", "StrictHostKeyChecking=no"
+    ]
+  },
+  "paths": {
+    "localYaml": "./out/clash.yaml",
+    "remoteTmp": "/tmp/config.yaml",
+    "remoteShellCrashYaml": "/data/ShellCrash/yamls/config.yaml",
+    "remoteShellCrashTmpYaml": "/tmp/ShellCrash/config.yaml",
+    "remoteShellCrashDir": "/data/ShellCrash",
+    "remoteShellCrashTmpDir": "/tmp/ShellCrash"
+  },
+  "restartShellCrash": true
+}

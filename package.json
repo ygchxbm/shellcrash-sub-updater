@@ -1,0 +1,31 @@
+{
+  "name": "shellcrash-sub-updater",
+  "version": "0.1.0",
+  "description": "Convert v2rayN/V2Ray subscriptions to Clash/Mihomo YAML and upload them to ShellCrash.",
+  "private": false,
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "shellcrash-sub-updater": "./updater.js"
+  },
+  "scripts": {
+    "start": "node web.js",
+    "convert": "node updater.js --config config.json --convert-only",
+    "update": "node updater.js --config config.json",
+    "upload": "node updater.js --config config.json --upload-only",
+    "help": "node updater.js --help",
+    "web:help": "node web.js --help",
+    "check": "node --check updater.js && node --check web.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "shellcrash",
+    "subconverter",
+    "clash",
+    "mihomo",
+    "v2ray",
+    "router"
+  ]
+}

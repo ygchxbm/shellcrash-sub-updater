@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ShellCrash 订阅更新器</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: #d8dee8;
+      --accent: #2563eb;
+      --accent-dark: #1d4ed8;
+      --danger: #b91c1c;
+      --ok: #047857;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 28px 18px 40px;
+    }
+    h1 {
+      margin: 0 0 18px;
+      font-size: 24px;
+      line-height: 1.2;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      margin-bottom: 14px;
+    }
+    label {
+      display: block;
+      margin: 0 0 6px;
+      font-weight: 600;
+    }
+    input[type="text"], input[type="file"], textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px 11px;
+      font: inherit;
+      background: #fff;
+      color: var(--text);
+    }
+    textarea {
+      min-height: 220px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .row { margin-bottom: 14px; }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-top: 12px;
+    }
+    button, a.button {
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      padding: 9px 12px;
+      color: #fff;
+      background: var(--accent);
+      text-decoration: none;
+      cursor: pointer;
+      font: inherit;
+      line-height: 1.2;
+    }
+    button.secondary, a.secondary {
+      background: #fff;
+      color: var(--accent);
+    }
+    button:hover, a.button:hover { background: var(--accent-dark); color: #fff; }
+    button:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+    .check {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+    }
+    .status {
+      color: var(--muted);
+      margin-left: auto;
+    }
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--danger); }
+    .hint {
+      color: var(--muted);
+      margin: 4px 0 0;
+      font-size: 13px;
+    }
+    @media (max-width: 720px) {
+      .grid { grid-template-columns: 1fr; }
+      .status { width: 100%; margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>ShellCrash 订阅更新器</h1>
+
+    <section class="panel">
+      <div class="row">
+        <label for="subscriptionUrl">订阅地址</label>
+        <input id="subscriptionUrl" type="text" autocomplete="off">
+        <p class="hint">支持 v2rayN/V2Ray 原始订阅，转换在本机完成。</p>
+      </div>
+      <div class="grid">
+        <div class="row">
+          <label for="routerHost">路由器 IP</label>
+          <input id="routerHost" type="text" autocomplete="off">
+        </div>
+        <div class="row">
+          <label for="privateKey">SSH 私钥路径</label>
+          <input id="privateKey" type="text" autocomplete="off">
+        </div>
+      </div>
+      <div class="row">
+        <label for="localYaml">本地 YAML 输出路径</label>
+        <input id="localYaml" type="text" autocomplete="off">
+      </div>
+      <div class="row">
+        <label for="yamlFile">上传指定 YAML 文件</label>
+        <input id="yamlFile" type="file" accept=".yaml,.yml,application/x-yaml,text/yaml,text/plain">
+        <p class="hint">未选择文件时，会上传 out 目录中按文件名排序的第一个 .yaml/.yml 文件。</p>
+      </div>
+      <label class="check">
+        <input id="restartShellCrash" type="checkbox">
+        上传成功后重启 ShellCrash
+      </label>
+      <div class="actions">
+        <button id="saveBtn" class="secondary">保存配置</button>
+        <button id="convertBtn">仅生成 YAML</button>
+        <button id="uploadBtn">生成并上传</button>
+        <button id="uploadYamlBtn">上传 YAML</button>
+        <a id="downloadBtn" class="button secondary" href="/api/download">下载 YAML</a>
+        <span id="status" class="status">就绪</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <label for="output">执行日志</label>
+      <textarea id="output" readonly></textarea>
+    </section>
+  </main>
+
+  <script>
+    const fields = {
+      subscriptionUrl: document.querySelector("#subscriptionUrl"),
+      routerHost: document.querySelector("#routerHost"),
+      privateKey: document.querySelector("#privateKey"),
+      localYaml: document.querySelector("#localYaml"),
+      yamlFile: document.querySelector("#yamlFile"),
+      restartShellCrash: document.querySelector("#restartShellCrash")
+    };
+    const statusEl = document.querySelector("#status");
+    const outputEl = document.querySelector("#output");
+    const buttons = [...document.querySelectorAll("button")];
+
+    function payload() {
+      return {
+        subscriptionUrl: fields.subscriptionUrl.value,
+        routerHost: fields.routerHost.value,
+        privateKey: fields.privateKey.value,
+        localYaml: fields.localYaml.value,
+        restartShellCrash: fields.restartShellCrash.checked
+      };
+    }
+
+    function readSelectedYaml() {
+      const file = fields.yamlFile.files[0];
+      if (!file) return Promise.resolve({});
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          yamlName: file.name,
+          yamlText: String(reader.result || "")
+        });
+        reader.onerror = () => reject(new Error("读取 YAML 文件失败"));
+        reader.readAsText(file);
+      });
+    }
+
+    function setStatus(text, kind = "") {
+      statusEl.textContent = text;
+      statusEl.className = `status ${kind}`;
+    }
+
+    function setBusy(busy) {
+      buttons.forEach(btn => btn.disabled = busy);
+    }
+
+    async function request(path, body) {
+      const res = await fetch(path, {
+        method: body ? "POST" : "GET",
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || data.output || "请求失败");
+      }
+      return data;
+    }
+
+    async function loadConfig() {
+      const data = await request("/api/config");
+      fields.subscriptionUrl.value = data.subscriptionUrl || "";
+      fields.routerHost.value = data.routerHost || "";
+      fields.privateKey.value = data.privateKey || "";
+      fields.localYaml.value = data.localYaml || "";
+      fields.restartShellCrash.checked = data.restartShellCrash !== false;
+    }
+
+    async function run(path, message) {
+      setBusy(true);
+      setStatus(message);
+      outputEl.value = "";
+      try {
+        const data = await request(path, payload());
+        outputEl.value = data.output || "完成";
+        setStatus("完成", "ok");
+      } catch (error) {
+        outputEl.value = error.message;
+        setStatus("失败", "err");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function uploadYaml() {
+      setBusy(true);
+      setStatus("上传 YAML 中");
+      outputEl.value = "";
+      try {
+        const data = await request("/api/upload-yaml", {
+          ...payload(),
+          ...(await readSelectedYaml())
+        });
+        outputEl.value = data.output || "完成";
+        setStatus("完成", "ok");
+      } catch (error) {
+        outputEl.value = error.message;
+        setStatus("失败", "err");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    document.querySelector("#saveBtn").addEventListener("click", async () => {
+      setBusy(true);
+      try {
+        await request("/api/config", payload());
+        setStatus("已保存", "ok");
+      } catch (error) {
+        outputEl.value = error.message;
+        setStatus("保存失败", "err");
+      } finally {
+        setBusy(false);
+      }
+    });
+    document.querySelector("#convertBtn").addEventListener("click", () => run("/api/convert", "转换中"));
+    document.querySelector("#uploadBtn").addEventListener("click", () => run("/api/upload", "转换并上传中"));
+    document.querySelector("#uploadYamlBtn").addEventListener("click", uploadYaml);
+
+    loadConfig().catch(error => {
+      outputEl.value = error.message;
+      setStatus("配置加载失败", "err");
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+.DS_Store
+node_modules/
+npm-debug.log*
+
+# Local user configuration and SSH state
+config.json
+config.local.json
+known_hosts
+id_rsa
+id_rsa.pub
+*.pem
+
+# Generated subscription outputs may contain private proxy nodes.
+out/
+uploads/
+
+# Downloaded subconverter binaries and archives.
+tools/
+
