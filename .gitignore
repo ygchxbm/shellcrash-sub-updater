@@ -9,7 +9,7 @@ known_hosts
 id_rsa
 id_rsa.pub
 *.pem
-
+.cursor/
 # Generated subscription outputs may contain private proxy nodes.
 out/
 uploads/
