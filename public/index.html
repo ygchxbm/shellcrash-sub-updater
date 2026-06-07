@@ -569,9 +569,44 @@
     }
 
     .file-picker input[type="file"] {
-      flex: 1 1 220px;
-      min-width: 0;
-      background: rgba(255, 255, 255, 0.4);
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .file-select-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 10px 18px;
+      border-radius: var(--radius-control);
+      color: #fff;
+      background: linear-gradient(135deg, var(--color-cta), var(--color-cta-light));
+      box-shadow: 0 4px 14px rgba(0, 122, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+      cursor: pointer;
+      font-weight: 500;
+      transition:
+        background var(--transition-fast),
+        box-shadow var(--transition-fast),
+        transform 150ms ease-out;
+    }
+
+    .file-select-button:hover {
+      background: linear-gradient(135deg, var(--color-cta-dark), var(--color-cta));
+      box-shadow: 0 6px 18px rgba(0, 122, 255, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    }
+
+    .file-select-button:active {
+      transform: scale(0.97);
+    }
+
+    .file-picker input[type="file"]:focus-visible + .file-select-button {
+      box-shadow: var(--focus-ring);
     }
 
     .file-meta {
@@ -589,11 +624,29 @@
       display: block;
     }
 
+    .progress-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
     .progress-title {
-      margin: 0 0 12px;
+      flex: 1 1 220px;
+      margin: 0;
       font-size: 16px;
       font-weight: 600;
       color: var(--text);
+    }
+
+    .progress-actions {
+      display: flex;
+      flex: 0 0 auto;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
     }
 
     .stage-list {
@@ -789,6 +842,7 @@
         <label for="yamlFile">上传指定 YAML 文件</label>
         <div class="file-picker">
           <input id="yamlFile" type="file" accept=".yaml,.yml,application/x-yaml,text/yaml,text/plain">
+          <label for="yamlFile" class="file-select-button">选择 YAML 文件</label>
           <button id="clearYamlBtn" type="button" class="secondary" hidden>取消已选文件</button>
         </div>
         <p id="yamlFileMeta" class="file-meta">未选择文件时，会上传 out 目录中按文件名排序的第一个 .yaml/.yml 文件。</p>
@@ -809,7 +863,13 @@
 
     <section id="progressSection" class="panel panel--progress">
       <div id="progressPanel" class="progress-panel">
-        <p id="progressTitle" class="progress-title">等待开始</p>
+        <div class="progress-header">
+          <p id="progressTitle" class="progress-title">等待开始</p>
+          <div class="progress-actions">
+            <button id="cancelTaskBtn" type="button" class="secondary" hidden>取消任务</button>
+            <button id="closeProgressBtn" type="button" class="secondary" disabled>关闭</button>
+          </div>
+        </div>
         <ol id="stageList" class="stage-list"></ol>
       </div>
     </section>
@@ -842,8 +902,17 @@
     const progressPanelEl = document.querySelector("#progressPanel");
     const progressTitleEl = document.querySelector("#progressTitle");
     const stageListEl = document.querySelector("#stageList");
-    const buttons = [...document.querySelectorAll("button")];
+    const cancelTaskBtn = document.querySelector("#cancelTaskBtn");
+    const closeProgressBtn = document.querySelector("#closeProgressBtn");
+    const busyButtons = [
+      document.querySelector("#saveBtn"),
+      document.querySelector("#convertBtn"),
+      document.querySelector("#uploadBtn"),
+      document.querySelector("#uploadYamlBtn"),
+      clearYamlBtn
+    ];
     let activePoll = null;
+    let activeTaskId = null;
 
     function payload() {
       return {
@@ -896,12 +965,19 @@
       progressSectionEl.classList.remove("is-visible");
       progressTitleEl.textContent = "等待开始";
       stageListEl.innerHTML = "";
+      cancelTaskBtn.hidden = true;
+      closeProgressBtn.disabled = true;
+      activeTaskId = null;
     }
 
     function renderTask(task) {
       const title = TASK_TITLES[task.type] || "任务";
       progressSectionEl.classList.add("is-visible");
       progressTitleEl.textContent = `${title}：${task.stageLabel || "处理中"}`;
+      activeTaskId = task.id;
+      cancelTaskBtn.hidden = !task.running;
+      cancelTaskBtn.disabled = !task.running;
+      closeProgressBtn.disabled = task.running;
       stageListEl.innerHTML = "";
 
       const currentIndex = task.stages.indexOf(task.stage);
@@ -915,7 +991,7 @@
         item.appendChild(dot);
         item.appendChild(text);
 
-        if (task.status === "error" && stage === task.stage) item.classList.add("error");
+        if ((task.status === "error" || task.status === "cancelled") && stage === task.stage) item.classList.add("error");
         else if (task.status === "success" || (currentIndex > index && currentIndex >= 0)) item.classList.add("done");
         else if (stage === task.stage) item.classList.add("active");
 
@@ -926,6 +1002,7 @@
 
       if (task.status === "success") setStatus("已完成", "ok");
       else if (task.status === "error") setStatus("执行失败", "err");
+      else if (task.status === "cancelled") setStatus("已取消", "err");
       else setStatus(task.stageLabel || "执行中", "run");
     }
 
@@ -946,7 +1023,9 @@
     }
 
     function setBusy(busy) {
-      buttons.forEach(btn => btn.disabled = busy);
+      busyButtons.forEach(btn => {
+        if (btn) btn.disabled = busy;
+      });
     }
 
     async function request(path, body) {
@@ -973,7 +1052,7 @@
       try {
         const data = await request(`/api/tasks/${encodeURIComponent(taskId)}`);
         renderTask(data.task);
-        if (data.task.status === "success" || data.task.status === "error") {
+        if (data.task.status === "success" || data.task.status === "error" || data.task.status === "cancelled") {
           setBusy(false);
           stopPolling();
           return;
@@ -995,11 +1074,28 @@
       setStatus(fallbackStatus, "run");
       try {
         const data = await request(path, body);
+        activeTaskId = data.taskId;
         await pollTask(data.taskId);
       } catch (error) {
         outputEl.value = error.message;
         setStatus("启动失败", "err");
         setBusy(false);
+      }
+    }
+
+    async function cancelActiveTask() {
+      if (!activeTaskId) return;
+      cancelTaskBtn.disabled = true;
+      setStatus("正在取消", "run");
+      try {
+        const data = await request(`/api/tasks/${encodeURIComponent(activeTaskId)}/cancel`, {});
+        renderTask(data.task);
+        setBusy(false);
+        stopPolling();
+      } catch (error) {
+        outputEl.value = `${outputEl.value ? `${outputEl.value}\n` : ""}${error.message}`;
+        setStatus("取消失败", "err");
+        cancelTaskBtn.disabled = false;
       }
     }
 
@@ -1044,6 +1140,8 @@
     document.querySelector("#convertBtn").addEventListener("click", () => run("/api/tasks/convert", "转换中"));
     document.querySelector("#uploadBtn").addEventListener("click", () => run("/api/tasks/upload", "转换并上传中"));
     document.querySelector("#uploadYamlBtn").addEventListener("click", uploadYaml);
+    cancelTaskBtn.addEventListener("click", cancelActiveTask);
+    closeProgressBtn.addEventListener("click", resetProgress);
     fields.yamlFile.addEventListener("change", updateYamlFileMeta);
     clearYamlBtn.addEventListener("click", clearSelectedYaml);
     window.addEventListener("beforeunload", stopPolling);

@@ -109,13 +109,16 @@ function requestBuffer(url, timeoutMs = 60000) {
 
 async function downloadFile(url, file) {
   log(`Downloading ${path.basename(file)}...`);
+  log(`Download source: ${redactUrl(url)}`);
   const buf = await requestBuffer(url, 120000);
   ensureDir(path.dirname(file));
   fs.writeFileSync(file, buf);
+  log(`Downloaded archive: ${file}`);
 }
 
 function extractTarGz(archive, dest) {
   ensureDir(dest);
+  log(`Extracting tar.gz archive to ${dest}...`);
   const res = spawnSync("tar", ["-xzf", archive, "-C", dest], { stdio: "inherit" });
   if (res.status !== 0) fail("Failed to extract tar.gz archive. Make sure tar is available.");
 }
@@ -135,7 +138,12 @@ async function extractArchive(archive, dest) {
     } catch {
       fail("Missing dependency 7zip-min. Run npm install before using Windows .7z auto extraction.");
     }
-    await sevenZip.unpack(archive, dest);
+    log(`Extracting 7z archive to ${dest}...`);
+    try {
+      await sevenZip.unpack(archive, dest);
+    } catch (error) {
+      fail(`Failed to extract 7z archive ${archive}: ${error.message}`);
+    }
     return;
   }
 
@@ -147,7 +155,11 @@ async function ensureSubconverter(config) {
   const asset = platformAsset();
   const installRoot = path.join(ROOT, "tools", "subconverter", version, asset.key);
   const exe = path.join(installRoot, "subconverter", asset.exe);
-  if (fs.existsSync(exe)) return { exe, cwd: path.dirname(exe), asset };
+  log(`Subconverter asset: ${asset.key}/${asset.asset}`);
+  if (fs.existsSync(exe)) {
+    log(`Using cached subconverter: ${exe}`);
+    return { exe, cwd: path.dirname(exe), asset };
+  }
 
   const archive = path.join(ROOT, "tools", "downloads", `${version}-${asset.asset}`);
   const url = `https://github.com/tindy2013/subconverter/releases/download/${version}/${asset.asset}`;
@@ -340,10 +352,10 @@ async function main() {
     return;
   }
 
-  const sub = await ensureSubconverter(config);
   const portStart = config.subconverter?.portStart || 25500;
   const portEnd = config.subconverter?.portEnd || portStart;
   logStage("starting-subconverter");
+  const sub = await ensureSubconverter(config);
   log(`Starting local subconverter (${sub.asset.key})...`);
   const svc = await startSubconverter(sub.exe, sub.cwd, portStart, portEnd);
   try {

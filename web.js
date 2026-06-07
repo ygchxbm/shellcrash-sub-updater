@@ -180,6 +180,7 @@ function taskSnapshot(task) {
     endedAt: task.endedAt,
     result: task.result,
     restartShellCrash: task.restartShellCrash,
+    cancelled: task.status === "cancelled",
     running: isTaskRunning(task)
   };
 }
@@ -203,7 +204,7 @@ function appendLogLine(task, line) {
     setTaskStage(task, match[1]);
     return;
   }
-  task.logs.push(trimmed);
+  task.logs.push(`[${new Date().toLocaleTimeString("zh-CN", { hour12: false })}] ${trimmed}`);
 }
 
 function attachLineReader(task, stream) {
@@ -247,29 +248,43 @@ function createTask(type, options) {
   currentTaskId = task.id;
 
   const args = ["updater.js", "--config", "config.json", ...options.args];
-  const child = spawn(process.execPath, args, { cwd: ROOT, env: process.env });
+  const child = spawn(process.execPath, args, {
+    cwd: ROOT,
+    env: process.env,
+    detached: process.platform !== "win32"
+  });
   task.child = child;
   attachLineReader(task, child.stdout);
   attachLineReader(task, child.stderr);
   setTaskStage(task, "preparing");
 
   child.on("close", code => {
-    if (task.status !== "error") {
+    if (task.status === "cancelled") {
+      task.result = {
+        ok: false,
+        code,
+        output: task.logs.join("\n"),
+        source: options.source,
+        localYaml: options.localYaml || null,
+        cancelled: true
+      };
+    } else if (task.status !== "error") {
       if (code === 0) {
         setTaskStage(task, "finished");
         task.status = "success";
       } else {
         task.status = "error";
+        appendLogLine(task, `任务失败：子进程退出码 ${code}，当前阶段 ${task.stageLabel}`);
       }
+      task.result = {
+        ok: code === 0,
+        code,
+        output: task.logs.join("\n"),
+        source: options.source,
+        localYaml: options.localYaml || null
+      };
     }
     task.endedAt = new Date().toISOString();
-    task.result = {
-      ok: code === 0,
-      code,
-      output: task.logs.join("\n"),
-      source: options.source,
-      localYaml: options.localYaml || null
-    };
     task.child = null;
     if (currentTaskId === task.id) currentTaskId = null;
   });
@@ -283,6 +298,39 @@ function createTask(type, options) {
     if (currentTaskId === task.id) currentTaskId = null;
   });
 
+  return task;
+}
+
+function cancelTask(taskId) {
+  const task = tasks.get(taskId);
+  if (!task) {
+    const error = new Error("任务不存在");
+    error.statusCode = 404;
+    throw error;
+  }
+  if (!isTaskRunning(task)) {
+    const error = new Error("任务已经结束，不能取消");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  task.status = "cancelled";
+  task.endedAt = new Date().toISOString();
+  appendLogLine(task, `用户取消任务，当前阶段：${task.stageLabel}`);
+
+  if (task.child?.pid) {
+    if (process.platform === "win32") {
+      spawn("taskkill", ["/pid", String(task.child.pid), "/t", "/f"], { stdio: "ignore" });
+    } else {
+      try {
+        process.kill(-task.child.pid, "SIGTERM");
+      } catch {
+        task.child.kill("SIGTERM");
+      }
+    }
+  }
+
+  if (currentTaskId === task.id) currentTaskId = null;
   return task;
 }
 
@@ -368,6 +416,13 @@ async function handleApi(req, res, url) {
       const payload = await readBody(req);
       const task = await handleTaskCreation("upload-yaml", payload);
       sendJson(res, 202, { ok: true, taskId: task.id });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname.startsWith("/api/tasks/") && url.pathname.endsWith("/cancel")) {
+      const taskId = decodeURIComponent(url.pathname.slice("/api/tasks/".length, -"/cancel".length));
+      const task = cancelTask(taskId);
+      sendJson(res, 200, { ok: true, task: taskSnapshot(task) });
       return;
     }
 
