@@ -509,6 +509,45 @@
       cursor: pointer;
     }
 
+    .auth-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .auth-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 40px;
+      padding: 9px 14px;
+      border-radius: var(--radius-control);
+      background: rgba(255, 255, 255, 0.38);
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      color: var(--text);
+      cursor: pointer;
+      transition:
+        background var(--transition-fast),
+        border-color var(--transition-fast),
+        box-shadow var(--transition-fast);
+    }
+
+    .auth-option:has(input:checked) {
+      background: rgba(0, 122, 255, 0.1);
+      border-color: rgba(0, 122, 255, 0.3);
+      color: var(--color-cta-dark);
+      box-shadow: 0 2px 10px rgba(0, 122, 255, 0.08);
+    }
+
+    .auth-option input {
+      accent-color: var(--color-cta);
+    }
+
+    .is-hidden {
+      display: none !important;
+    }
+
     .status {
       color: var(--muted);
       margin-left: auto;
@@ -829,10 +868,28 @@
           <label for="routerHost">路由器 IP</label>
           <input id="routerHost" type="text" autocomplete="off">
         </div>
-        <div class="row">
+        <div id="privateKeyRow" class="row">
           <label for="privateKey">SSH 私钥路径</label>
           <input id="privateKey" type="text" autocomplete="off">
         </div>
+      </div>
+      <div class="row">
+        <label>登录方式</label>
+        <div class="auth-options">
+          <label class="auth-option">
+            <input name="authMethod" type="radio" value="privateKey" checked>
+            SSH 私钥
+          </label>
+          <label class="auth-option">
+            <input name="authMethod" type="radio" value="password">
+            密码
+          </label>
+        </div>
+        <p class="hint">密码只用于本次上传任务，不会写入 config.json。</p>
+      </div>
+      <div id="passwordRow" class="row is-hidden">
+        <label for="sshPassword">SSH 密码</label>
+        <input id="sshPassword" type="password" autocomplete="current-password">
       </div>
       <div class="row">
         <label for="localYaml">本地 YAML 输出路径</label>
@@ -890,6 +947,8 @@
       subscriptionUrl: document.querySelector("#subscriptionUrl"),
       routerHost: document.querySelector("#routerHost"),
       privateKey: document.querySelector("#privateKey"),
+      authMethod: [...document.querySelectorAll("input[name='authMethod']")],
+      sshPassword: document.querySelector("#sshPassword"),
       localYaml: document.querySelector("#localYaml"),
       yamlFile: document.querySelector("#yamlFile"),
       restartShellCrash: document.querySelector("#restartShellCrash")
@@ -898,6 +957,8 @@
     const outputEl = document.querySelector("#output");
     const yamlFileMetaEl = document.querySelector("#yamlFileMeta");
     const clearYamlBtn = document.querySelector("#clearYamlBtn");
+    const privateKeyRowEl = document.querySelector("#privateKeyRow");
+    const passwordRowEl = document.querySelector("#passwordRow");
     const progressSectionEl = document.querySelector("#progressSection");
     const progressPanelEl = document.querySelector("#progressPanel");
     const progressTitleEl = document.querySelector("#progressTitle");
@@ -919,9 +980,30 @@
         subscriptionUrl: fields.subscriptionUrl.value,
         routerHost: fields.routerHost.value,
         privateKey: fields.privateKey.value,
+        authMethod: selectedAuthMethod(),
+        sshPassword: selectedAuthMethod() === "password" ? fields.sshPassword.value : "",
         localYaml: fields.localYaml.value,
         restartShellCrash: fields.restartShellCrash.checked
       };
+    }
+
+    function selectedAuthMethod() {
+      return fields.authMethod.find(input => input.checked)?.value || "privateKey";
+    }
+
+    function setAuthMethod(method) {
+      fields.authMethod.forEach(input => {
+        input.checked = input.value === method;
+      });
+      updateAuthFields();
+    }
+
+    function updateAuthFields() {
+      const usePassword = selectedAuthMethod() === "password";
+      privateKeyRowEl.classList.toggle("is-hidden", usePassword);
+      passwordRowEl.classList.toggle("is-hidden", !usePassword);
+      fields.privateKey.disabled = usePassword;
+      fields.sshPassword.disabled = !usePassword;
     }
 
     function updateYamlFileMeta() {
@@ -1104,6 +1186,7 @@
       fields.subscriptionUrl.value = data.subscriptionUrl || "";
       fields.routerHost.value = data.routerHost || "";
       fields.privateKey.value = data.privateKey || "";
+      setAuthMethod(data.authMethod || "privateKey");
       fields.localYaml.value = data.localYaml || "";
       fields.restartShellCrash.checked = data.restartShellCrash !== false;
     }
@@ -1142,11 +1225,13 @@
     document.querySelector("#uploadYamlBtn").addEventListener("click", uploadYaml);
     cancelTaskBtn.addEventListener("click", cancelActiveTask);
     closeProgressBtn.addEventListener("click", resetProgress);
+    fields.authMethod.forEach(input => input.addEventListener("change", updateAuthFields));
     fields.yamlFile.addEventListener("change", updateYamlFileMeta);
     clearYamlBtn.addEventListener("click", clearSelectedYaml);
     window.addEventListener("beforeunload", stopPolling);
 
     updateYamlFileMeta();
+    updateAuthFields();
     resetProgress();
     loadConfig().catch(error => {
       outputEl.value = error.message;

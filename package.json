@@ -29,6 +29,7 @@
     "router"
   ],
   "dependencies": {
-    "7zip-min": "^2.0.0"
+    "7zip-min": "^2.0.0",
+    "ssh2": "^1.16.0"
   }
 }

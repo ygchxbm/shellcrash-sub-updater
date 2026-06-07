@@ -251,14 +251,133 @@ function run(command, args, opts = {}) {
   const res = spawnSync(command, args, { encoding: "utf8", ...opts });
   if (res.status !== 0) {
     const detail = `${res.stdout || ""}${res.stderr || ""}`.trim();
-    fail(`${command} failed${detail ? `:\n${detail}` : ""}`);
+    const hint = sshFailureHint(command, detail);
+    fail(`${command} failed${detail ? `:\n${detail}` : ""}${hint ? `\n${hint}` : ""}`);
   }
   return res.stdout;
 }
 
-function upload(config, localYaml) {
+function sshFailureHint(command, detail) {
+  if (command !== "ssh" && command !== "scp") return "";
+  if (/permission denied/i.test(detail)) {
+    return "诊断：认证失败。请确认路由器用户名、私钥是否匹配；如果私钥失效，可在 Web 页面切换为密码登录。";
+  }
+  if (/identity file .* not accessible|no such file/i.test(detail)) {
+    return "诊断：私钥文件不存在或路径不可访问。请检查 config.json 中的 router.privateKey。";
+  }
+  if (/host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED/i.test(detail)) {
+    return "诊断：Host key 校验失败。请确认路由器身份，必要时清理项目 known_hosts 后重试。";
+  }
+  if (/could not resolve hostname|name or service not known/i.test(detail)) {
+    return "诊断：路由器地址无法解析。请检查 router.host。";
+  }
+  if (/connection timed out|operation timed out|no route to host|connection refused/i.test(detail)) {
+    return "诊断：无法连接路由器 SSH 服务。请检查 IP、网络、端口和路由器 SSH 是否开启。";
+  }
+  return "";
+}
+
+function remoteAuthMode() {
+  return process.env.SHELLCRASH_SSH_AUTH === "password" ? "password" : "privateKey";
+}
+
+function sshPassword() {
+  return process.env.SHELLCRASH_SSH_PASSWORD || "";
+}
+
+function requireSsh2() {
+  try {
+    return require("ssh2").Client;
+  } catch {
+    fail("Missing dependency ssh2. Run npm install before using password login.");
+  }
+}
+
+function connectSsh2(config) {
+  const password = sshPassword();
+  if (!password) fail("SSH password is required for password login mode.");
+  const Client = requireSsh2();
+  const router = config.router;
+  const conn = new Client();
+  return new Promise((resolve, reject) => {
+    conn
+      .on("ready", () => resolve(conn))
+      .on("error", error => {
+        reject(new Error(`SSH password login failed for ${router.user}@${router.host}: ${error.message}`));
+      })
+      .connect({
+        host: router.host,
+        port: router.port || 22,
+        username: router.user,
+        password,
+        readyTimeout: 20000,
+        keepaliveInterval: 10000
+      });
+  });
+}
+
+async function withSsh2(config, fn) {
+  const conn = await connectSsh2(config);
+  try {
+    return await fn(conn);
+  } finally {
+    conn.end();
+  }
+}
+
+function uploadByExec(conn, localPath, remotePath) {
+  const remoteDir = path.posix.dirname(remotePath);
+  const data = fs.readFileSync(localPath);
+  const chunkSize = 3 * 1024;
+  const chunks = [];
+  for (let offset = 0; offset < data.length; offset += chunkSize) {
+    chunks.push(data.subarray(offset, offset + chunkSize).toString("base64"));
+  }
+  log(`Uploading ${data.length} bytes in ${chunks.length} chunks through SSH exec.`);
+
+  return execSsh2(conn, `mkdir -p ${sh(remoteDir)} && : > ${sh(remotePath)}`)
+    .then(async () => {
+      for (const chunk of chunks) {
+        await execSsh2(conn, `printf %s ${sh(chunk)} | base64 -d >> ${sh(remotePath)}`);
+      }
+    })
+    .catch(error => {
+      throw new Error(`SSH upload failed to ${remotePath}: ${error.message}`);
+    });
+}
+
+function execSsh2(conn, script) {
+  return new Promise((resolve, reject) => {
+    conn.exec(script, (error, stream) => {
+      if (error) {
+        reject(new Error(`SSH exec failed to start: ${error.message}`));
+        return;
+      }
+      let stdout = "";
+      let stderr = "";
+      stream
+        .on("close", code => {
+          const output = `${stdout}${stderr}`.trim();
+          if (output) log(output);
+          if (code === 0) resolve(output);
+          else reject(new Error(`SSH exec failed with code ${code}${output ? `:\n${output}` : ""}`));
+        })
+        .on("data", data => { stdout += data.toString(); });
+      stream.stderr.on("data", data => { stderr += data.toString(); });
+    });
+  });
+}
+
+async function upload(config, localYaml) {
+  if (remoteAuthMode() === "password") {
+    log(`Uploading with SSH password login to ${config.router.user}@${config.router.host}:${config.paths.remoteTmp}`);
+    await withSsh2(config, conn => uploadByExec(conn, localYaml, config.paths.remoteTmp));
+    return;
+  }
+
   const remote = `${config.router.user}@${config.router.host}:${config.paths.remoteTmp}`;
   const key = path.resolve(ROOT, config.router.privateKey);
+  if (!fs.existsSync(key)) fail(`SSH private key not found: ${key}`);
   const common = ["-i", key, ...sshOptions(config.router)];
   let res = spawnSync("scp", ["-O", ...common, localYaml, remote], { encoding: "utf8" });
   if (res.status !== 0) {
@@ -291,7 +410,7 @@ function resolveUploadYaml(config, args) {
   fail("No YAML file found. Generate one first or pass --local-yaml.");
 }
 
-function installRemote(config, restart) {
+async function installRemote(config, restart) {
   const p = config.paths;
   const script = `
 set -e
@@ -310,6 +429,14 @@ setconfig cpucore arm64
 "$TMPDIR/CrashCore" -t -d "$BINDIR" -f ${sh(p.remoteShellCrashTmpYaml)}
 ${restart ? 'if "$CRASHDIR/start.sh" restart 2>/dev/null; then :; else "$CRASHDIR/start.sh" stop; "$CRASHDIR/start.sh" start; fi' : 'true'}
 `;
+  if (remoteAuthMode() === "password") {
+    log(`Installing with SSH password login on ${config.router.user}@${config.router.host}`);
+    await withSsh2(config, conn => execSsh2(conn, script));
+    return;
+  }
+
+  const key = path.resolve(ROOT, config.router.privateKey);
+  if (!fs.existsSync(key)) fail(`SSH private key not found: ${key}`);
   run("ssh", [...sshBase(config), script], { stdio: "inherit" });
 }
 
@@ -339,14 +466,14 @@ async function main() {
     log(`Using YAML ${localYaml}`);
     logStage("uploading-router");
     log("Uploading to router...");
-    upload(config, localYaml);
+    await upload(config, localYaml);
     logStage("installing-shellcrash");
     logStage("validating-config");
     if (!args.noRestart && config.restartShellCrash !== false) {
       logStage("restarting-shellcrash");
     }
     log("Installing on ShellCrash and testing config...");
-    installRemote(config, !args.noRestart && config.restartShellCrash !== false);
+    await installRemote(config, !args.noRestart && config.restartShellCrash !== false);
     logStage("finished");
     log("Done.");
     return;
@@ -371,14 +498,14 @@ async function main() {
     if (!args.convertOnly) {
       logStage("uploading-router");
       log("Uploading to router...");
-      upload(config, out);
+      await upload(config, out);
       logStage("installing-shellcrash");
       logStage("validating-config");
       if (!args.noRestart && config.restartShellCrash !== false) {
         logStage("restarting-shellcrash");
       }
       log("Installing on ShellCrash and testing config...");
-      installRemote(config, !args.noRestart && config.restartShellCrash !== false);
+      await installRemote(config, !args.noRestart && config.restartShellCrash !== false);
     }
     logStage("finished");
     log("Done.");

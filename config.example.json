@@ -16,6 +16,7 @@
   "router": {
     "host": "192.168.31.1",
     "user": "root",
+    "authMethod": "privateKey",
     "privateKey": "./id_rsa",
     "sshOptions": [
       "-o", "HostKeyAlgorithms=+ssh-rsa",

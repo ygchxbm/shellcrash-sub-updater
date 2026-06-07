@@ -20,6 +20,7 @@ Convert a v2rayN/V2Ray raw subscription into Clash/Mihomo YAML on your local mac
 - 支持把生成的 YAML 上传到路由器 ShellCrash
 - 支持在 Web 页面选择已有 YAML 并上传
 - 支持在 Web 页面查看阶段进度和实时日志
+- Web 页面支持 SSH 私钥或本次密码登录
 - 上传前自动备份路由器旧配置
 - 上传后用 ShellCrash 当前 Mihomo 核心测试配置，通过后再重启
 
@@ -48,6 +49,7 @@ cp config.example.json config.json
   "router": {
     "host": "192.168.31.1",
     "user": "root",
+    "authMethod": "privateKey",
     "privateKey": "./id_rsa"
   }
 }
@@ -106,11 +108,14 @@ npm run upload
 - `subscriptionUrl`：v2rayN/V2Ray 原始订阅地址
 - `router.host`：路由器 IP
 - `router.user`：SSH 用户，通常是 `root`
+- `router.authMethod`：Web 页面使用的登录方式，`privateKey` 或 `password`
 - `router.privateKey`：SSH 私钥路径
 - `paths.localYaml`：生成的本地 YAML 路径
 - `restartShellCrash`：上传成功后是否重启 ShellCrash
 
-`known_hosts` 是项目运行时自动维护的本地 SSH 指纹文件，用来校验你连接的路由器身份，不需要手动创建，也不应提交到 Git。
+密码登录只在 Web 页面提交任务时使用，密码不会写入 `config.json`。源码方式运行需要先 `npm install`，确保 `ssh2` 依赖已安装。
+
+私钥模式下，`known_hosts` 是项目运行时自动维护的本地 SSH 指纹文件，用来校验你连接的路由器身份，不需要手动创建，也不应提交到 Git。Web 密码模式使用 Node SSH 连接，不会写入这个文件。
 
 小米/OpenWrt 老版本 Dropbear 如果只支持 `ssh-rsa`，可保留示例里的：
 
@@ -169,6 +174,7 @@ npm start
 页面功能：
 
 - 修改订阅地址和路由器配置
+- 选择 SSH 私钥或密码登录
 - 仅生成 YAML
 - 下载 YAML
 - 生成并上传

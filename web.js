@@ -127,6 +127,10 @@ function updateConfigFromPayload(payload) {
   if (typeof payload.privateKey === "string" && payload.privateKey.trim()) {
     config.router.privateKey = payload.privateKey.trim();
   }
+  if (typeof payload.authMethod === "string") {
+    if (!["privateKey", "password"].includes(payload.authMethod)) throw new Error("登录方式无效");
+    config.router.authMethod = payload.authMethod;
+  }
   if (typeof payload.localYaml === "string" && payload.localYaml.trim()) {
     config.paths.localYaml = payload.localYaml.trim();
   }
@@ -250,7 +254,7 @@ function createTask(type, options) {
   const args = ["updater.js", "--config", "config.json", ...options.args];
   const child = spawn(process.execPath, args, {
     cwd: ROOT,
-    env: process.env,
+    env: { ...process.env, ...(options.env || {}) },
     detached: process.platform !== "win32"
   });
   task.child = child;
@@ -337,12 +341,22 @@ function cancelTask(taskId) {
 async function handleTaskCreation(type, payload) {
   const config = updateConfigFromPayload(payload);
   const noRestart = !!payload.noRestart || config.restartShellCrash === false;
+  const authMethod = config.router.authMethod === "password" ? "password" : "privateKey";
+  const env = {};
+  if (authMethod === "password" && type !== "convert") {
+    if (typeof payload.sshPassword !== "string" || !payload.sshPassword) {
+      throw new Error("密码登录模式需要输入 SSH 密码。密码只用于本次任务，不会写入 config.json。");
+    }
+    env.SHELLCRASH_SSH_AUTH = "password";
+    env.SHELLCRASH_SSH_PASSWORD = payload.sshPassword;
+  }
 
   if (type === "convert") {
     return createTask(type, {
       args: ["--convert-only"],
       noRestart,
-      restartShellCrash: config.restartShellCrash
+      restartShellCrash: config.restartShellCrash,
+      env
     });
   }
 
@@ -352,7 +366,8 @@ async function handleTaskCreation(type, payload) {
     return createTask(type, {
       args,
       noRestart,
-      restartShellCrash: config.restartShellCrash
+      restartShellCrash: config.restartShellCrash,
+      env
     });
   }
 
@@ -364,6 +379,7 @@ async function handleTaskCreation(type, payload) {
     args,
     noRestart,
     restartShellCrash: config.restartShellCrash,
+    env,
     source: uploadedYaml ? "selected-file" : "out-directory",
     localYaml: uploadedYaml
   });
@@ -377,6 +393,7 @@ async function handleApi(req, res, url) {
         subscriptionUrl: config.subscriptionUrl,
         routerHost: config.router?.host,
         privateKey: config.router?.privateKey,
+        authMethod: config.router?.authMethod || "privateKey",
         localYaml: config.paths?.localYaml,
         restartShellCrash: config.restartShellCrash !== false,
         running: isTaskRunning(activeTask())
@@ -392,6 +409,7 @@ async function handleApi(req, res, url) {
         subscriptionUrl: config.subscriptionUrl,
         routerHost: config.router.host,
         privateKey: config.router.privateKey,
+        authMethod: config.router.authMethod || "privateKey",
         localYaml: config.paths.localYaml,
         restartShellCrash: config.restartShellCrash !== false
       });
