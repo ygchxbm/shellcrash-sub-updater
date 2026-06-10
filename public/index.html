@@ -145,7 +145,8 @@
       position: relative;
       z-index: 1;
       display: grid;
-      grid-template-columns: minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) minmax(var(--progress-width-min), var(--progress-width-max));
+      align-items: stretch;
       gap: var(--app-gap);
       border: 1px solid rgba(255, 255, 255, 0.86);
       border-radius: var(--radius-window);
@@ -159,15 +160,6 @@
       backdrop-filter: blur(46px) saturate(190%);
       -webkit-backdrop-filter: blur(46px) saturate(190%);
       overflow: hidden;
-    }
-
-    main:not(:has(#progressSection.is-visible)) {
-      width: min(var(--app-idle-width), calc(100% - (var(--app-gutter) * 2)));
-    }
-
-    main:has(#progressSection.is-visible) {
-      grid-template-columns: minmax(0, 1fr) minmax(var(--progress-width-min), var(--progress-width-max));
-      align-items: stretch;
     }
 
     h1 {
@@ -253,7 +245,7 @@
       min-height: 0;
     }
 
-    main:has(#progressSection.is-visible) > .panel:first-of-type {
+    main > .panel:first-of-type {
       grid-column: 1;
     }
 
@@ -263,46 +255,12 @@
     }
 
     .panel--progress {
-      display: none;
+      display: block;
       grid-column: 2;
       grid-row: 2;
       align-self: stretch;
       height: 100%;
       min-height: 0;
-      opacity: 0;
-      visibility: hidden;
-      pointer-events: none;
-      transform: translateX(18px) scale(0.985);
-      filter: blur(10px);
-      transition:
-        opacity var(--transition-fluid),
-        transform var(--transition-fluid),
-        filter var(--transition-fluid),
-        visibility 0s linear var(--transition-fluid),
-        display var(--transition-fluid) allow-discrete;
-    }
-
-    .panel--progress.is-visible {
-      display: block;
-      opacity: 1;
-      visibility: visible;
-      pointer-events: auto;
-      transform: translateX(0) scale(1);
-      filter: blur(0);
-      transition:
-        opacity var(--transition-fluid),
-        transform var(--transition-fluid),
-        filter var(--transition-fluid),
-        visibility 0s linear 0s,
-        display var(--transition-fluid) allow-discrete;
-    }
-
-    @starting-style {
-      .panel--progress.is-visible {
-        opacity: 0;
-        transform: translateX(18px) scale(0.985);
-        filter: blur(10px);
-      }
     }
 
     label {
@@ -439,7 +397,7 @@
       white-space: nowrap;
     }
 
-    #uploadBtn {
+    .action-primary {
       color: #fff;
       border-color: rgba(0, 95, 200, 0.18);
       background: linear-gradient(180deg, var(--accent-primary-top), var(--accent-primary-bottom));
@@ -448,17 +406,23 @@
         0 8px 18px rgba(0, 122, 255, 0.28);
     }
 
-    button.secondary,
-    a.secondary,
-    #convertBtn,
-    #uploadYamlBtn,
+    .action-tonal,
     .file-select-button {
       color: var(--text-soft);
       background: rgba(255, 255, 255, 0.5);
     }
 
-    #saveBtn {
+    .action-ghost {
       color: var(--accent);
+      background: rgba(255, 255, 255, 0.28);
+      border-color: rgba(0, 122, 255, 0.1);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    }
+
+    button.secondary,
+    a.secondary {
+      color: var(--text-soft);
+      background: rgba(255, 255, 255, 0.46);
     }
 
     button:active:not(:disabled),
@@ -476,12 +440,26 @@
       box-shadow: 0 8px 20px rgba(35, 47, 75, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9);
     }
 
-    #uploadBtn:hover:not(:disabled) {
+    .action-primary:hover:not(:disabled) {
       color: #fff;
       background: linear-gradient(180deg, var(--accent), var(--accent-primary-hover-bottom));
       box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.34),
         0 10px 24px rgba(0, 122, 255, 0.34);
+    }
+
+    .action-tonal:hover:not(:disabled),
+    a.action-tonal:hover:not([aria-disabled="true"]) {
+      color: var(--accent-strong);
+      background: rgba(255, 255, 255, 0.72);
+      border-color: rgba(0, 122, 255, 0.22);
+    }
+
+    .action-ghost:hover:not(:disabled),
+    a.action-ghost:hover:not([aria-disabled="true"]) {
+      color: var(--accent-strong);
+      background: rgba(255, 255, 255, 0.58);
+      border-color: rgba(0, 122, 255, 0.18);
     }
 
     button:disabled,
@@ -823,12 +801,11 @@
     }
 
     @media (max-width: 1060px) {
-      main,
-      main:has(#progressSection.is-visible) {
+      main {
         grid-template-columns: minmax(0, 1fr);
       }
 
-      .panel--progress.is-visible {
+      .panel--progress {
         grid-column: 1;
       }
     }
@@ -998,11 +975,11 @@
         上传成功后重启 ShellCrash
       </label>
       <div class="actions">
-        <button id="saveBtn" class="secondary">保存配置</button>
-        <button id="convertBtn">仅生成 YAML</button>
-        <button id="uploadBtn">生成并上传</button>
-        <button id="uploadYamlBtn">上传 YAML</button>
-        <a id="downloadBtn" class="button secondary" href="/api/download">下载 YAML</a>
+        <button id="saveBtn" class="action-ghost">保存配置</button>
+        <button id="convertBtn" class="action-tonal">仅生成 YAML</button>
+        <button id="uploadBtn" class="action-primary">生成并上传</button>
+        <button id="uploadYamlBtn" class="action-tonal">上传 YAML</button>
+        <a id="downloadBtn" class="button action-ghost" href="/api/download">下载 YAML</a>
         <span id="status" class="status">就绪</span>
       </div>
     </section>
@@ -1010,10 +987,10 @@
     <section id="progressSection" class="panel panel--progress">
       <div id="progressPanel" class="progress-panel">
         <div class="progress-header">
-          <p id="progressTitle" class="progress-title">等待开始</p>
+          <p id="progressTitle" class="progress-title">执行进度</p>
           <div class="progress-actions">
             <button id="cancelTaskBtn" type="button" class="secondary" hidden>取消任务</button>
-            <button id="closeProgressBtn" type="button" class="secondary" disabled>关闭</button>
+            <button id="closeProgressBtn" type="button" class="secondary" hidden disabled>清空进度</button>
           </div>
         </div>
         <ol id="stageList" class="stage-list"></ol>
@@ -1031,6 +1008,79 @@
       convert: "仅生成 YAML",
       upload: "生成并上传",
       "upload-yaml": "上传 YAML"
+    };
+    const DEFAULT_STAGES = [
+      "preparing",
+      "reading-yaml",
+      "starting-subconverter",
+      "converting",
+      "writing-yaml",
+      "uploading-router",
+      "validating-config",
+      "restarting-shellcrash",
+      "finished"
+    ];
+    const STAGE_COPY = {
+      preparing: {
+        title: "准备配置",
+        idle: "等待读取订阅、路由器与认证参数",
+        active: "正在整理本次任务所需配置",
+        done: "任务配置已确认"
+      },
+      "reading-yaml": {
+        title: "定位 YAML 文件",
+        idle: "上传 YAML 时会优先使用指定文件",
+        active: "正在读取指定文件或 out 目录中的 YAML",
+        done: "YAML 输入已准备"
+      },
+      "starting-subconverter": {
+        title: "启动 subconverter",
+        idle: "需要转换订阅时会自动拉起本地转换器",
+        active: "正在检查并启动本地 subconverter",
+        done: "subconverter 已就绪"
+      },
+      converting: {
+        title: "转换订阅",
+        idle: "生成 Clash YAML 前会在本机完成转换",
+        active: "正在把原始订阅转换为 Clash 配置",
+        done: "订阅转换完成"
+      },
+      "writing-yaml": {
+        title: "写入 YAML",
+        idle: "转换结果会写入本地输出路径",
+        active: "正在写入本地 YAML 文件",
+        done: "YAML 文件已生成"
+      },
+      "uploading-router": {
+        title: "上传到路由器",
+        idle: "上传任务会通过 SSH 发送到路由器",
+        active: "正在连接路由器并上传 YAML",
+        done: "路由器文件已更新"
+      },
+      "installing-shellcrash": {
+        title: "安装到 ShellCrash",
+        idle: "需要时会把配置同步到 ShellCrash",
+        active: "正在应用 ShellCrash 配置",
+        done: "ShellCrash 配置已应用"
+      },
+      "validating-config": {
+        title: "校验配置",
+        idle: "上传后会校验关键配置状态",
+        active: "正在检查配置是否可用",
+        done: "配置校验通过"
+      },
+      "restarting-shellcrash": {
+        title: "重启 ShellCrash",
+        idle: "勾选重启后会在上传完成后执行",
+        active: "正在重启 ShellCrash 服务",
+        done: "ShellCrash 已重启"
+      },
+      finished: {
+        title: "完成",
+        idle: "任务结束后会在这里保留最终状态",
+        active: "正在收尾并刷新日志",
+        done: "全部阶段已完成"
+      }
     };
     const fields = {
       subscriptionUrl: document.querySelector("#subscriptionUrl"),
@@ -1132,11 +1182,44 @@
       statusEl.className = `status ${kind}`;
     }
 
-    function resetProgress() {
-      progressSectionEl.classList.remove("is-visible");
-      progressTitleEl.textContent = "等待开始";
+    function stageCopy(stage) {
+      return STAGE_COPY[stage] || {
+        title: stageLabel(stage),
+        idle: "等待该阶段开始",
+        active: "正在处理该阶段",
+        done: "该阶段已完成"
+      };
+    }
+
+    function renderStageItem(stage, state = "idle", detail = "") {
+      const copy = stageCopy(stage);
+      const item = document.createElement("li");
+      const dot = document.createElement("span");
+      const text = document.createElement("span");
+      const title = document.createElement("strong");
+      const note = document.createElement("small");
+      item.className = `stage-item ${state}`;
+      dot.className = "stage-dot";
+      title.textContent = copy.title;
+      note.textContent = detail || copy[state] || copy.idle;
+      text.appendChild(title);
+      text.appendChild(note);
+      item.appendChild(dot);
+      item.appendChild(text);
+      stageListEl.appendChild(item);
+    }
+
+    function renderIdleStages() {
       stageListEl.innerHTML = "";
+      DEFAULT_STAGES.forEach(stage => renderStageItem(stage));
+    }
+
+    function resetProgress() {
+      progressSectionEl.classList.add("is-visible");
+      progressTitleEl.textContent = "执行进度";
+      renderIdleStages();
       cancelTaskBtn.hidden = true;
+      closeProgressBtn.hidden = true;
       closeProgressBtn.disabled = true;
       activeTaskId = null;
     }
@@ -1148,25 +1231,24 @@
       activeTaskId = task.id;
       cancelTaskBtn.hidden = !task.running;
       cancelTaskBtn.disabled = !task.running;
+      closeProgressBtn.hidden = task.running;
       closeProgressBtn.disabled = task.running;
       stageListEl.innerHTML = "";
 
       const currentIndex = task.stages.indexOf(task.stage);
       task.stages.forEach((stage, index) => {
-        const item = document.createElement("li");
-        const dot = document.createElement("span");
-        const text = document.createElement("span");
-        item.className = "stage-item";
-        dot.className = "stage-dot";
-        text.textContent = stage === task.stage ? `${task.stageLabel}` : stageLabel(stage);
-        item.appendChild(dot);
-        item.appendChild(text);
-
-        if ((task.status === "error" || task.status === "cancelled") && stage === task.stage) item.classList.add("error");
-        else if (task.status === "success" || (currentIndex > index && currentIndex >= 0)) item.classList.add("done");
-        else if (stage === task.stage) item.classList.add("active");
-
-        stageListEl.appendChild(item);
+        let state = "idle";
+        let detail = "";
+        if ((task.status === "error" || task.status === "cancelled") && stage === task.stage) {
+          state = "error";
+          detail = task.status === "cancelled" ? "任务已取消，未继续执行后续阶段" : (task.stageLabel || "该阶段执行失败");
+        } else if (task.status === "success" || (currentIndex > index && currentIndex >= 0)) {
+          state = "done";
+        } else if (stage === task.stage) {
+          state = "active";
+          detail = task.stageLabel || stageCopy(stage).active;
+        }
+        renderStageItem(stage, state, detail);
       });
       outputEl.value = (task.logs || []).join("\n");
       outputEl.scrollTop = outputEl.scrollHeight;
